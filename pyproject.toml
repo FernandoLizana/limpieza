@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "limpieza"
+version = "0.1.0"
+description = "Intelligent, safe disk cleaner for Windows and Linux"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "limpieza contributors" }]
+keywords = ["disk", "cleanup", "cache", "temp", "windows", "linux"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Environment :: Console",
+  "Environment :: Win32 (MS Windows)",
+  "Topic :: System :: Systems Administration",
+  "Intended Audience :: End Users/Desktop",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+limpieza = "limpieza.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/FernandoLizana/limpieza"
+Repository = "https://github.com/FernandoLizana/limpieza"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
