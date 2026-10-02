@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from limpieza.paths import Locations, fmt_bytes, is_forbidden, platform_id
@@ -38,6 +37,17 @@ def test_forbidden_user_libraries(tmp_path: Path) -> None:
     assert is_forbidden(loc.home / "Desktop", loc)
     assert not is_forbidden(loc.temp, loc)
     assert not is_forbidden(loc.temp / "file.tmp", loc)
+    nested = loc.home / "Documents" / "secret" / "notes.txt"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("private")
+    assert is_forbidden(nested, loc)
+    assert is_forbidden(nested.parent, loc)
+    onedrive = loc.home / "OneDrive" / "Fotos" / "vacaciones.jpg"
+    onedrive.parent.mkdir(parents=True)
+    onedrive.write_text("pic")
+    assert is_forbidden(onedrive, loc)
+    assert is_forbidden(onedrive.parent, loc)
+    assert not is_forbidden(loc.home / "Downloads", loc)
 
 
 def test_forbidden_unix_roots(tmp_path: Path) -> None:

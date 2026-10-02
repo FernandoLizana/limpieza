@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from limpieza.models import CleanStats, Hit, Kind, Rule
-from limpieza.paths import current, is_forbidden
+from limpieza.paths import current, is_forbidden, is_link_like, is_link_like_entry
 from limpieza.scan import iter_targets, walk_files
 
 
@@ -30,7 +30,7 @@ def clean_hit(hit: Hit, *, apply: bool) -> CleanStats:
         return stats
 
     for path, st in walk_files(rule):
-        if is_forbidden(path):
+        if is_link_like(path) or is_forbidden(path):
             stats.skipped += 1
             continue
         stats.deleted_bytes += int(st.st_size)
@@ -54,19 +54,14 @@ def clean_hit(hit: Hit, *, apply: bool) -> CleanStats:
 def _remove_empty_dirs(rule: Rule) -> None:
     targets = list(iter_targets(rule))
     for target in targets:
-        if is_forbidden(target) or not target.exists():
+        if is_link_like(target) or is_forbidden(target) or not target.exists():
             continue
         keep_root = rule.kind != Kind.KEEP_LATEST
         _rm_empty_tree(target, keep_root=keep_root)
 
 
 def _rm_empty_tree(root: Path, *, keep_root: bool) -> None:
-    if root.is_symlink() or not root.is_dir():
-        if not keep_root and root.is_dir() and not root.is_symlink():
-            try:
-                root.rmdir()
-            except OSError:
-                pass
+    if is_link_like(root) or not root.is_dir():
         return
     try:
         entries = list(os.scandir(root))
@@ -74,7 +69,7 @@ def _rm_empty_tree(root: Path, *, keep_root: bool) -> None:
         return
     for entry in entries:
         try:
-            if entry.is_symlink():
+            if is_link_like_entry(entry):
                 continue
             if entry.is_dir(follow_symlinks=False):
                 _rm_empty_tree(Path(entry.path), keep_root=False)

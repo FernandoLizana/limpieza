@@ -26,3 +26,8 @@ id_ed25519
 id_ed25519.pub
 secrets/
 .local/
+canvases/
+*.canvas.tsx
+history.jsonl
+credentials.json
+*.local.md

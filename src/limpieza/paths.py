@@ -80,20 +80,87 @@ def _first_existing(*candidates: Path) -> Path | None:
     return None
 
 
-def is_forbidden(path: Path, loc: Locations | None = None) -> bool:
-    """Refuse to operate on roots, home, or user libraries."""
-    loc = loc or current()
+_FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+
+
+def _safe_resolve(path: Path) -> Path | None:
     try:
-        resolved = path.expanduser().resolve()
+        return path.expanduser().resolve()
+    except OSError:
+        return None
+
+
+def _same_or_under(path: Path, base: Path) -> bool:
+    try:
+        return path == base or path.is_relative_to(base)
+    except (OSError, ValueError):
+        return False
+
+
+def is_link_like(path: Path) -> bool:
+    """True for symlinks and Windows junctions/mount points (do not follow)."""
+    try:
+        if path.is_symlink():
+            return True
     except OSError:
         return True
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction):
+        try:
+            if is_junction():
+                return True
+        except OSError:
+            return True
+    try:
+        st = path.lstat()
+    except OSError:
+        return True
+    if getattr(st, "st_reparse_tag", 0):
+        return True
+    if getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:
+        return True
+    return False
 
-    if resolved.is_file():
-        resolved = resolved.parent
 
-    home = loc.home.resolve()
-    forbidden: list[Path] = [
-        home,
+def is_link_like_entry(entry: os.DirEntry) -> bool:
+    """Same as is_link_like, for os.scandir entries."""
+    try:
+        if entry.is_symlink():
+            return True
+    except OSError:
+        return True
+    try:
+        st = entry.stat(follow_symlinks=False)
+    except OSError:
+        return True
+    if getattr(st, "st_reparse_tag", 0):
+        return True
+    if getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_REPARSE_POINT:
+        return True
+    return False
+
+
+def is_forbidden(path: Path, loc: Locations | None = None) -> bool:
+    """Refuse home, user libraries, OS trees, and anything under them.
+
+    Caches that live *under* the user profile (AppData, .cache, Downloads)
+    stay allowed. Document libraries and system roots are blocked including
+    descendants, so a junction/symlink into Documents cannot be cleaned.
+    """
+    loc = loc or current()
+    resolved = _safe_resolve(path)
+    if resolved is None:
+        return True
+
+    home = _safe_resolve(loc.home)
+    if home is None:
+        return True
+    if resolved == home:
+        return True
+    if resolved.parent == home and resolved.is_file():
+        return True
+
+    libraries = [
         home / "Documents",
         home / "Documentos",
         home / "Desktop",
@@ -107,50 +174,41 @@ def is_forbidden(path: Path, loc: Locations | None = None) -> bool:
         home / "Musica",
         home / "OneDrive",
     ]
+    onedrive = os.environ.get("OneDrive")
+    if onedrive:
+        libraries.append(Path(onedrive))
+
+    for base in libraries:
+        base_res = _safe_resolve(base)
+        if base_res is not None and _same_or_under(resolved, base_res):
+            return True
 
     if loc.platform == "windows":
-        forbidden.extend(
-            [
-                Path(os.environ.get("SystemRoot", r"C:\Windows")),
-                Path(r"C:\Windows"),
-                Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
-                Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
-            ]
-        )
         if len(resolved.parts) <= 1:
             return True
-    else:
-        forbidden.extend(
-            [
-                Path("/"),
-                Path("/usr"),
-                Path("/bin"),
-                Path("/sbin"),
-                Path("/etc"),
-                Path("/boot"),
-                Path("/lib"),
-                Path("/opt"),
-                Path("/root"),
-                Path("/home"),
-            ]
-        )
-        if resolved == Path("/"):
-            return True
-
-    for base in forbidden:
-        try:
-            base_res = base.resolve()
-        except OSError:
-            continue
-        if resolved == base_res:
-            return True
-
-    windows_temp = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "Temp"
-    try:
-        if loc.platform == "windows" and resolved == windows_temp.resolve():
+        windows_temp = _safe_resolve(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "Temp")
+        if windows_temp is not None and _same_or_under(resolved, windows_temp):
             return False
-    except OSError:
-        pass
+        for raw in (
+            os.environ.get("SystemRoot", r"C:\Windows"),
+            r"C:\Windows",
+            os.environ.get("ProgramFiles", r"C:\Program Files"),
+            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        ):
+            base_res = _safe_resolve(Path(raw))
+            if base_res is not None and _same_or_under(resolved, base_res):
+                return True
+        return False
+
+    if resolved == Path("/"):
+        return True
+    for raw in ("/usr", "/bin", "/sbin", "/etc", "/boot", "/lib", "/opt", "/root"):
+        base_res = _safe_resolve(Path(raw))
+        if base_res is not None and _same_or_under(resolved, base_res):
+            return True
+    home_root = _safe_resolve(Path("/home"))
+    if home_root is not None and resolved == home_root:
+        return True
     return False
 
 

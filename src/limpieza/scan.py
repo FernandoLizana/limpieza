@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from limpieza.models import Hit, Kind, Rule
-from limpieza.paths import is_forbidden
+from limpieza.paths import is_forbidden, is_link_like, is_link_like_entry
 
 SAMPLE_LIMIT = 8
 SKIP_DIR_NAMES = {".git", ".svn", ".hg", "node_modules"}
@@ -24,9 +24,11 @@ def iter_targets(rule: Rule) -> Iterator[Path]:
 
     if rule.kind == Kind.KEEP_LATEST:
         for root in rule.roots:
-            if not root.is_dir():
+            if is_link_like(root) or not root.is_dir():
                 continue
-            subdirs = [p for p in _safe_iterdir(root) if p.is_dir() and not p.is_symlink()]
+            subdirs = [
+                p for p in _safe_iterdir(root) if p.is_dir() and not is_link_like(p)
+            ]
             subdirs.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
             yield from subdirs[rule.keep :]
         return
@@ -40,9 +42,9 @@ def walk_files(rule: Rule) -> Iterator[tuple[Path, os.stat_result]]:
     patterns = rule.patterns
 
     for target in iter_targets(rule):
-        if is_forbidden(target):
+        if is_link_like(target) or is_forbidden(target):
             continue
-        if target.is_file() and not target.is_symlink():
+        if target.is_file() and not is_link_like(target):
             try:
                 st = target.stat()
             except OSError:
@@ -75,7 +77,7 @@ def _walk_dir(
     patterns: tuple[str, ...],
     glob_mode: bool,
 ) -> Iterator[tuple[Path, os.stat_result]]:
-    if root.is_symlink() or is_forbidden(root):
+    if is_link_like(root) or is_forbidden(root):
         return
     try:
         scan = os.scandir(root)
@@ -85,17 +87,19 @@ def _walk_dir(
     with scan:
         for entry in scan:
             try:
-                if entry.is_symlink():
+                if is_link_like_entry(entry):
+                    continue
+                path = Path(entry.path)
+                if is_forbidden(path):
                     continue
                 if entry.is_dir(follow_symlinks=False):
                     if entry.name in SKIP_DIR_NAMES:
                         continue
-                    yield from _walk_dir(Path(entry.path), cutoff, uid, patterns, glob_mode)
+                    yield from _walk_dir(path, cutoff, uid, patterns, glob_mode)
                     continue
                 if not entry.is_file(follow_symlinks=False):
                     continue
                 st = entry.stat(follow_symlinks=False)
-                path = Path(entry.path)
                 if _wanted(path, st, cutoff, uid, patterns, glob_mode):
                     yield path, st
             except OSError:
@@ -124,7 +128,7 @@ def _wanted(
 
 
 def _named_subdirs(root: Path, names: set[str]) -> Iterator[Path]:
-    if root.is_symlink():
+    if is_link_like(root) or is_forbidden(root):
         return
     try:
         scan = os.scandir(root)
@@ -133,9 +137,11 @@ def _named_subdirs(root: Path, names: set[str]) -> Iterator[Path]:
     with scan:
         for entry in scan:
             try:
-                if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
+                if is_link_like_entry(entry) or not entry.is_dir(follow_symlinks=False):
                     continue
                 path = Path(entry.path)
+                if is_forbidden(path):
+                    continue
                 if entry.name in names:
                     yield path
                     continue

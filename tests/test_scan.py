@@ -74,6 +74,26 @@ def test_keep_latest(tmp_path: Path) -> None:
     assert "v3" not in names
 
 
+def test_skips_symlinked_directory(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    outside = tmp_path / "documents"
+    outside.mkdir()
+    (outside / "keep.txt").write_bytes(b"keepme")
+    (cache / "ok.tmp").write_bytes(b"ok")
+    link = cache / "escape"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        import pytest
+
+        pytest.skip("symlink creation is not permitted on this machine")
+    hit = measure(_rule(cache))
+    assert hit.files == 1
+    assert hit.bytes == 2
+    assert (outside / "keep.txt").exists()
+
+
 def test_skips_git_and_node_modules(tmp_path: Path) -> None:
     git = tmp_path / ".git"
     git.mkdir()

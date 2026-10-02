@@ -24,7 +24,7 @@ Ventajas concretas:
 
 1. **Simulación por defecto.** `limpieza clean` no borra nada hasta `--apply`. Puedes ver exactamente qué se iría.
 2. **Clasificación honesta.** `safe` = regenerable (temp, caches de paquetes, miniaturas). `review` = grande o lento de recuperar (modelos Hugging Face, instaladores viejos). Nunca se mezclan sin que lo elijas.
-3. **Lista de prohibidos.** No opera sobre Documentos, Escritorio, Imágenes, Vídeos, Música, OneDrive, la carpeta de usuario, ni raíces del SO (`C:\Windows`, `/usr`, `/etc`, …).
+3. **Lista de prohibidos.** No opera sobre Documentos, Escritorio, Imágenes, Vídeos, Música, OneDrive, la carpeta de usuario, ni raíces del SO (`C:\Windows`, `/usr`, `/etc`, …). Eso incluye **subcarpetas** (no solo la carpeta raíz) y **no sigue** enlaces simbólicos ni uniones/junctions de Windows.
 4. **No camina proyectos.** Omite `.git` y `node_modules` aunque aparezcan bajo una ruta de cache.
 5. **Temp con edad mínima.** En temporales, ignora archivos de las últimas 24 horas (72 h y solo tuyos en `/tmp` de Linux).
 6. **Navegador = solo cache.** Cookies, sesión e historial se quedan.
@@ -207,10 +207,12 @@ python -m limpieza gui
 
 Limpieza **rechaza** operar sobre:
 
-- La carpeta de usuario (`HOME`)
-- Documentos / Documentos, Escritorio, Imágenes, Vídeos, Música
-- OneDrive
-- `C:\Windows`, `C:\Program Files` (y x86), `/`, `/usr`, `/bin`, `/etc`, `/boot`, `/opt`, `/root`, `/home` como raíz
+- La carpeta de usuario (`HOME`) y archivos sueltos en su raíz
+- Documentos, Escritorio, Imágenes, Vídeos, Música **y todo lo que cuelga de ellas**
+- OneDrive (incluida Descargas si está redirigida a OneDrive)
+- `C:\Windows`, `C:\Program Files` (y x86) y sus subcarpetas, salvo `C:\Windows\Temp`
+- `/`, `/usr`, `/bin`, `/etc`, `/boot`, `/opt`, `/root` (y contenido); `/home` como raíz
+- Enlaces simbólicos y uniones (junctions) de Windows — no se siguen ni se borran a través de ellos
 - Directorios llamados `.git`, `.svn`, `.hg`, `node_modules` al caminar
 - Cookies e historial del navegador (solo subcarpetas de cache)
 - El runtime **más reciente** del agente de Cursor
@@ -261,7 +263,7 @@ What you get:
 
 1. **Dry-run by default** — nothing is deleted until `--apply`.
 2. **Honest classes** — `safe` (regenerable) vs `review` (large / slow to restore).
-3. **Hard denylist** — Documents, Desktop, Pictures, Videos, Music, OneDrive, home, OS roots.
+3. **Hard denylist** — Documents, Desktop, Pictures, Videos, Music, OneDrive (including descendants), home, OS roots. Symlinks and Windows junctions are not followed.
 4. **Skips `.git` and `node_modules`** while walking.
 5. **Age gates** on temp (24h) and `/tmp` (72h, your files only).
 6. **Browser = cache only** (cookies/history stay).
